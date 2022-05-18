@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         自定义哔哩哔哩视频播放速度,记住播放速度
 // @namespace    http://tampermonkey.net/
-// @version      1.0.1
+// @version      1.0.2
 // @description  可以使用按键 z(恢复1倍速)、x（减0.1倍速）、c（加0.1倍速),可通过菜单记住播放速度
 // @author       felix
 // @icon         chrome://favicon/http://www.bilibili.com/
@@ -11,7 +11,6 @@
 // ==/UserScript==
 (function () {
     'use strict';
-    
 
     // console.log(`[${GM_info.script.name}]: 开始运行`);
 
@@ -31,6 +30,7 @@
     var DOM_NAME = {
         SPEED: "#speed",
         VIDEO: "bwp-video",
+        VIDEO_2: "video",
         JUMP_BUTTON: ".bilibili-player-electric-panel-jump",
         CUSTOMER_TOAST: ".bilibili-player-volumeHint.felix",
         CUSTOMER_TOAST_SUB_DOM: ".bilibili-player-volumeHint.felix .bilibili-player-volumeHint-text",
@@ -41,6 +41,7 @@
     }
 
     // ===================================================加载区=====================================================================================
+
     setTimeout(loading, 3000);
 
     function loading() {
@@ -62,6 +63,7 @@
             var videoSpeed = getVideoSpeed();
             var videoSpeedTextNumber = getVideoSpeedTextNumber();
             if (Number(videoSpeed) !== videoSpeedTextNumber) {
+                console.log("change speed")
                 changeSpeed(videoSpeedTextNumber);
             }
         }, 3000);
@@ -117,7 +119,8 @@
     // ===================================================获取控件区=====================================================================================
     // 获取 video控件
     function getVideo() {
-        return document.querySelector(DOM_NAME.VIDEO);
+        var video = document.querySelector(DOM_NAME.VIDEO)
+        return video ? video : document.querySelector(DOM_NAME.VIDEO_2);
     }
 
     // ===================================================键盘监听区=====================================================================================
