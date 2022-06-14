@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         自定义哔哩哔哩视频播放速度,记住播放速度
 // @namespace    http://tampermonkey.net/
-// @version      1.0.2
-// @description  可以使用按键 z(恢复1倍速)、x（减0.1倍速）、c（加0.1倍速),可通过菜单记住播放速度
+// @version      1.0.3
+// @description  可以使用按键 z(恢复1倍速)、x（减0.1倍速）、c（加0.1倍速)、s(记住或忘记播放速度), 跳过充电
 // @author       felix
 // @icon         chrome://favicon/http://www.bilibili.com/
 // @match        https://www.bilibili.com/video/*
@@ -28,7 +28,7 @@
     };
 
     var DOM_NAME = {
-        SPEED: "#speed",
+        SPEED: ".bilibili-player-video-btn-speed-name",
         VIDEO: "bwp-video",
         VIDEO_2: "video",
         JUMP_BUTTON: ".bilibili-player-electric-panel-jump",
@@ -46,9 +46,7 @@
 
     function loading() {
         addToast();
-        addButton();
         loadSpeed();
-
         addInterval();
     }
 
@@ -63,8 +61,8 @@
             var videoSpeed = getVideoSpeed();
             var videoSpeedTextNumber = getVideoSpeedTextNumber();
             if (Number(videoSpeed) !== videoSpeedTextNumber) {
-                console.log("change speed")
-                changeSpeed(videoSpeedTextNumber);
+                console.log("change speed", videoSpeedTextNumber)
+                changeSpeed(videoSpeedTextNumber, false);
             }
         }, 3000);
     }
@@ -78,21 +76,25 @@
         }, 500)
     }
 
-    // 添加按钮
-    function addButton() {
-        var div = document.createElement("div");
-        div.innerHTML = '<button id="reduce" style="width:15px;margin:0 3px">-</button><button style="width:30px"><sapn id="speed">1<span/></button><button id="add" style="width:15px;margin:0 3px">+</button>';
-        document.getElementById("arc_toolbar_report").appendChild(div);
-        document.getElementById("reduce").onclick = function () { reduceSpeed(); };
-        document.getElementById("add").onclick = function () { addSpeed(); };
+    function loadSpeed() {
+        var speedSwitch = localStorage.getItem(STORAGE_KEY.BILIBILI_VIDEO_SPEED_SIWTCH)
+        if (speedSwitch == "true") {
+            var speed = localStorage.getItem(STORAGE_KEY.BILIBILI_VIDEO_SPEED);
+            if (speed) {
+                changeSpeed(speed, false);
+                loadRemoveSpeedMenu();
+            } else {
+                loadSaveSpeedMenu();
+            }
+        }
     }
 
-    // 是否有toast
+    // =============================================== toast ==========================================================
     function hasToast() {
-        return $(DOM_NAME.CUSTOMER_TOAST) == null;
+        var toastDom = $(DOM_NAME.CUSTOMER_TOAST)
+        return toastDom != null && toastDom != undefined;
     }
 
-    // 添加 调整倍速的 toast
     function addToast() {
         var div = $(
             `
@@ -101,38 +103,47 @@
                 </div>
             `
         )
-
         $(".bilibili-player-video-wrap").append(div);
     }
 
-    // 加载播放速度
-    function loadSpeed() {
-        var speed = localStorage.getItem(STORAGE_KEY.BILIBILI_VIDEO_SPEED);
-        if (speed) {
-            changeSpeed(speed, false);
-            loadRemoveSpeedMenu();
-        } else {
-            loadSaveSpeedMenu();
+    function toast(str) {
+        $(DOM_NAME.CUSTOMER_TOAST).attr("style", '{ "opacity": 100, "display": "block" }');
+        $(DOM_NAME.CUSTOMER_TOAST_SUB_DOM).text(str);
+
+        if (CONSTANT_DATA.REMOVE_SPEED_TOAST_INTERVAL) {
+            clearInterval(CONSTANT_DATA.REMOVE_SPEED_TOAST_INTERVAL);
         }
+        CONSTANT_DATA.REMOVE_SPEED_TOAST_INTERVAL = setInterval(() => {
+            var opacity = $(DOM_NAME.CUSTOMER_TOAST).css("opacity")
+            opacity = opacity - 0.05;
+            if (opacity <= 0.7) {
+                $(DOM_NAME.CUSTOMER_TOAST).css("opacity", 0);
+                $(DOM_NAME.CUSTOMER_TOAST).css("dispaly", "none");
+                clearInterval(CONSTANT_DATA.REMOVE_SPEED_TOAST_INTERVAL);
+            } else {
+                $(DOM_NAME.CUSTOMER_TOAST).css("opacity", opacity);
+            }
+        }, 200);
     }
 
     // ===================================================获取控件区=====================================================================================
-    // 获取 video控件
     function getVideo() {
         var video = document.querySelector(DOM_NAME.VIDEO)
         return video ? video : document.querySelector(DOM_NAME.VIDEO_2);
     }
 
+
+
     // ===================================================键盘监听区=====================================================================================
     document.onkeydown = function (e) {
         if (e.target.nodeName !== 'BODY') return;
-        if (/^[zxcZXC]$/.test(e.key)) {
+        if (/^[zxcZXCsS]$/.test(e.key)) {
             if (e.key === 'z' || e.key === 'Z') changeSpeed(1, true);
             if (e.key === 'x' || e.key === 'X') reduceSpeed();
             if (e.key === 'c' || e.key === 'C') addSpeed();
+            if (e.key === 's' || e.key === 'S') changeSaveSpeedSwitch();
         }
     };
-
 
     // ==================================================播放速度=================================================================================
     // 加载记住播放速度菜单
@@ -140,7 +151,7 @@
         if (SETTING.REMEMBER_SPEED_MENU_ID) {
             GM_unregisterMenuCommand(SETTING.REMEMBER_SPEED_MENU_ID);
         }
-        SETTING.REMEMBER_SPEED_MENU_ID = GM_registerMenuCommand("记住播放速度", openSaveSpeedSitch);
+        SETTING.REMEMBER_SPEED_MENU_ID = GM_registerMenuCommand("记住播放速度", openSaveSpeedSwitch);
     }
 
     // 加载忘记播放速度菜单
@@ -148,17 +159,29 @@
         if (SETTING.REMEMBER_SPEED_MENU_ID) {
             GM_unregisterMenuCommand(SETTING.REMEMBER_SPEED_MENU_ID);
         }
-        SETTING.REMEMBER_SPEED_MENU_ID = GM_registerMenuCommand("忘记播放速度", closeSaveSpeedSitch);
+        SETTING.REMEMBER_SPEED_MENU_ID = GM_registerMenuCommand("忘记播放速度", closeSaveSpeedSwitch);
+    }
+
+    function changeSaveSpeedSwitch() {
+        var speedSwitch = localStorage.getItem(STORAGE_KEY.BILIBILI_VIDEO_SPEED_SIWTCH);
+        if (speedSwitch == "true") {
+            // 当前是记住
+            closeSaveSpeedSwitch();
+            toast("已忘记");
+        } else {
+            openSaveSpeedSwitch();
+            toast("已记住");
+        }
     }
 
     // 开启记住播放速度开关
-    function openSaveSpeedSitch() {
+    function openSaveSpeedSwitch() {
         localStorage.setItem(STORAGE_KEY.BILIBILI_VIDEO_SPEED_SIWTCH, true);
         setSpeedToStorage();
     }
 
     // 关闭记住播放速度开关
-    function closeSaveSpeedSitch() {
+    function closeSaveSpeedSwitch() {
         localStorage.setItem(STORAGE_KEY.BILIBILI_VIDEO_SPEED_SIWTCH, false);
         removeSpeedFromStorage();
     }
@@ -182,7 +205,12 @@
 
     // 获取当前展示的播放速度
     function getVideoSpeedTextNumber() {
-        return Number($(DOM_NAME.SPEED).text());
+        var speedText = $(DOM_NAME.SPEED).text()
+        if (speedText == "倍速") {
+            speedText = "1";
+        }
+        speedText = speedText.replaceAll("x", "")
+        return Number(speedText);
     }
 
     // 改变展示的播放速度文字
@@ -208,24 +236,6 @@
         changeSpeed(playSpeed, true);
     }
 
-    // 缓慢移除toast
-    function hideSpeedToast() {
-        if (CONSTANT_DATA.REMOVE_SPEED_TOAST_INTERVAL) {
-            clearInterval(CONSTANT_DATA.REMOVE_SPEED_TOAST_INTERVAL);
-        }
-        CONSTANT_DATA.REMOVE_SPEED_TOAST_INTERVAL = setInterval(() => {
-            var opacity = $(DOM_NAME.CUSTOMER_TOAST).css("opacity")
-            opacity = opacity - 0.05;
-            if (opacity <= 0.7) {
-                $(DOM_NAME.CUSTOMER_TOAST).css("opacity", 0);
-                $(DOM_NAME.CUSTOMER_TOAST).css("dispaly", "none");
-                clearInterval(CONSTANT_DATA.REMOVE_SPEED_TOAST_INTERVAL);
-            } else {
-                $(DOM_NAME.CUSTOMER_TOAST).css("opacity", opacity);
-            }
-        }, 200);
-    }
-
     // 改变播放速度
     function changeSpeed(playSpeed, showToast) {
         if (playSpeed && playSpeed >= SETTING.MIN_SPEED && playSpeed <= SETTING.MAX_SPEED) {
@@ -239,9 +249,7 @@
                 addToast();
             }
             if (showToast) {
-                $(DOM_NAME.CUSTOMER_TOAST).attr("style", '{ "opacity": 100, "display": "block" }');
-                $(DOM_NAME.CUSTOMER_TOAST_SUB_DOM).text(playSpeed);
-                hideSpeedToast();
+                toast(playSpeed);
             }
         }
     }
